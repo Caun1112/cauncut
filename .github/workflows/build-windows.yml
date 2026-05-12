@@ -1,0 +1,62 @@
+name: Build Windows Portable Zip
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.8'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          cd packages/video_engine
+          flutter pub get
+          cd ../..
+
+      - name: Download FFmpeg shared DLLs
+        shell: pwsh
+        run: |
+          # 使用 BtbN 的 FFmpeg master 构建 (含 NVENC)
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-temp
+          # 复制 DLL 到项目目录
+          Copy-Item ffmpeg-temp/ffmpeg-master-latest-win64-gpl-shared/bin/*.dll -Destination ffmpeg-bin/
+          Write-Host "FFmpeg DLLs ready:"
+          Get-ChildItem ffmpeg-bin/
+
+      - name: Build Flutter Windows
+        run: flutter build windows --release
+
+      - name: Copy FFmpeg DLLs to build output
+        shell: pwsh
+        run: |
+          Copy-Item ffmpeg-bin/*.dll -Destination build/windows/runner/Release/
+          Write-Host "Build output:"
+          Get-ChildItem build/windows/runner/Release/
+
+      - name: Package Zip
+        shell: pwsh
+        run: |
+          $version = (Get-Date -Format "yyyyMMdd-HHmm")
+          Compress-Archive `
+            -Path build/windows/runner/Release/* `
+            -DestinationPath cauncut-windows-x64-$version.zip
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cauncut-windows-portable
+          path: cauncut-windows-x64-*.zip
+          retention-days: 7
