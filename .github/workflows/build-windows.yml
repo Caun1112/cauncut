@@ -50,29 +50,34 @@ jobs:
       - name: Copy FFmpeg DLLs to build output
         shell: pwsh
         run: |
-          # 找到实际的 Release 输出目录
-          $releaseDir = Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" } | Select-Object -First 1
-          if (-not $releaseDir) {
-            Write-Host "Searching for build output..."
+          $outDir = "build/windows/x64/runner/Release"
+          if (-not (Test-Path $outDir)) {
+            Write-Host "x64 path not found, searching..."
             Get-ChildItem build/windows -Recurse -Directory | ForEach-Object { Write-Host $_.FullName }
-            $releaseDir = Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" } | Select-Object -First 1
+            $outDir = (Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" -and (Test-Path "$($_.FullName)/cauncut.exe") } | Select-Object -First 1).FullName
           }
-          Write-Host "Release dir: $($releaseDir.FullName)"
-          Copy-Item ffmpeg-bin/*.dll -Destination $releaseDir.FullName -Force
-          Write-Host "Build output:"
-          Get-ChildItem $releaseDir.FullName
+          Write-Host "Output dir: $outDir"
+          Copy-Item ffmpeg-bin/*.dll -Destination $outDir -Force
+          Write-Host "=== Build output contents ==="
+          Get-ChildItem $outDir
 
       - name: Package Zip
         shell: pwsh
         run: |
-          $releaseDir = Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" } | Select-Object -First 1
+          $outDir = "build/windows/x64/runner/Release"
+          if (-not (Test-Path $outDir)) {
+            $outDir = (Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" -and (Test-Path "$($_.FullName)/cauncut.exe") } | Select-Object -First 1).FullName
+          }
           $version = (Get-Date -Format "yyyyMMdd-HHmm")
           $zipName = "cauncut-windows-x64-$version.zip"
           Compress-Archive `
-            -Path "$($releaseDir.FullName)/*" `
+            -Path "$outDir/*" `
             -DestinationPath $zipName `
             -Force
           Write-Host "Zip created: $zipName ($((Get-Item $zipName).Length) bytes)"
+          Write-Host "Contents:"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::OpenRead($zipName).Entries | ForEach-Object { Write-Host "  $($_.Name)" }
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
