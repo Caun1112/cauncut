@@ -50,21 +50,29 @@ jobs:
       - name: Copy FFmpeg DLLs to build output
         shell: pwsh
         run: |
-          Copy-Item ffmpeg-bin/*.dll -Destination build/windows/runner/Release/
+          # 找到实际的 Release 输出目录
+          $releaseDir = Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" } | Select-Object -First 1
+          if (-not $releaseDir) {
+            Write-Host "Searching for build output..."
+            Get-ChildItem build/windows -Recurse -Directory | ForEach-Object { Write-Host $_.FullName }
+            $releaseDir = Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" } | Select-Object -First 1
+          }
+          Write-Host "Release dir: $($releaseDir.FullName)"
+          Copy-Item ffmpeg-bin/*.dll -Destination $releaseDir.FullName -Force
           Write-Host "Build output:"
-          Get-ChildItem build/windows/runner/Release/
+          Get-ChildItem $releaseDir.FullName
 
       - name: Package Zip
         shell: pwsh
         run: |
+          $releaseDir = Get-ChildItem build/windows -Recurse -Directory | Where-Object { $_.Name -eq "Release" } | Select-Object -First 1
           $version = (Get-Date -Format "yyyyMMdd-HHmm")
           $zipName = "cauncut-windows-x64-$version.zip"
           Compress-Archive `
-            -Path build/windows/runner/Release/* `
+            -Path "$($releaseDir.FullName)/*" `
             -DestinationPath $zipName `
             -Force
-          Write-Host "Zip created: $zipName"
-          Get-ChildItem $zipName
+          Write-Host "Zip created: $zipName ($((Get-Item $zipName).Length) bytes)"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
